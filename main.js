@@ -1,78 +1,73 @@
 /*jslint devel:true */
 var define, brackets, CodeMirror;
 define(function (require, exports, module) {
-	'use strict';
+  'use strict';
 
-	var LanguageManager = brackets.getModule("language/LanguageManager");
-	
-    CodeMirror.defineMode("jsx", function(config, parserConfig) {
-      var jsMode = CodeMirror.getMode(config, "javascript");
-      var xmlMode = CodeMirror.getMode(config, {name: "xml", htmlMode: true});
+  var LanguageManager = brackets.getModule("language/LanguageManager");
+  var CodeMirror = brackets.getModule("thirdparty/CodeMirror2/lib/codemirror");
 
-      function js(stream, state) {
-        var style = jsMode.token(stream, state.jsState);
-        if (stream.current() == "<") {
-          if (state.jsState.reAllowed) {
-            state.token = xml;
-            state.localState = xmlMode.startState(jsMode.indent(state.jsState, ""));
-            state.mode = "xml";
-            state.indented = 
-            stream.backUp(1);
-            return xml(stream,state);
-          }
-        }
-        return style;
+  CodeMirror.defineMode("jsx", function(config, parserConfig) {
+    var jsMode = CodeMirror.getMode(config, "javascript");
+    var xmlMode =  CodeMirror.getMode(config, {name: "xml", htmlMode: true});
+
+    function js(stream, state) {
+      if ((state.jsState.lastType == "operator"
+           || state.jsState.lastType == "keyword c"
+           || /^[\[{}\(,;:]$/.test(state.jsState.lastType))
+          && stream.match(/^<[a-zA-Z]+/i, false)) {
+        state.token = xml;
+        return xmlMode.token(stream, state.localState);
+        state.localState = xmlMode.startState(jsMode.indent(state.jsState, ""));
+        state.localMode = xmlMode;
+        state.indented = stream.backUp(1);
+        return xml(stream, state);
       }
-      function xml(stream, state) {
-      	var xmlState = state.localState;
-      	var style = xmlMode.token(stream,state.localState);
-      	if(!xmlState.context){
-      	  //end;
-      	  state.token = js;
-          state.curState = null;
-          state.mode = "javascript";
-      	}
-      	return style;
+      return jsMode.token(stream, state.jsState);;
+    }
+
+    function xml(stream, state) {
+      if (!state.localState.context) {
+        state.token = js;
+        return jsMode.token(stream, state.jsState);
       }
+      return xmlMode.token(stream, state.localState);;
+    }
 
-      return {
-        startState: function() {
-          var state = jsMode.startState();
-          return {token: js, localState: null, mode: "javascript", jsState: state};
-        },
+    return {
+      startState: function() {
+        var state = jsMode.startState();
+        var xmlState = xmlMode.startState();
+        return {token: js, localState: xmlState, jsState: state};
+      },
 
-        copyState: function(state) {
-          if (state.localState)
-            var local = CodeMirror.copyState(xmlMode, state.localState);
-          return {token: state.token, localState: local, mode: state.mode,
-                  jsState: CodeMirror.copyState(jsMode, state.jsState)};
-        },
+      copyState: function(state) {
+        return {token: state.token,
+                localState: CodeMirror.copyState(xmlMode, state.localState),
+                jsState: CodeMirror.copyState(jsMode, state.jsState)};
+      },
 
-        token: function(stream, state) {
-          return state.token(stream, state);
-        },
+      token: function(stream, state) {
+        return state.token(stream, state);
+      },
 
-        /*indent: function(state, textAfter) {
-          if (state.token == xml || /^\s*<[\/]/.test(textAfter))
-            return xmlMode.indent(state.xmlState, textAfter);
-          else if (state.token == js)
-            return jsMode.indent(state.localState, textAfter);
-        },*/
+      indent: function(state, textAfter) {
+        if (state.token == js)
+          return jsMode.indent(state.jsState, textAfter);
+        else
+          return xmlMode.indent(state.localState, textAfter);
+      },
 
-        electricChars: "/{}:"
-      }
-    });
+      electricChars: "/{}:"
+    };
+  });
 
-    CodeMirror.defineMIME("text/jsx", "jsx");
-    
-    var jslanguage = LanguageManager.getLanguage("javascript");
-    jslanguage.removeFileExtension('jsx');
-    
-	LanguageManager.defineLanguage("jsx", {
-		"name": "jsx",
-		"mode": "jsx",
-		"fileExtensions": ["jsx"],
-		"blockComment": ["/*", "*/"]
-	});	
+  CodeMirror.defineMIME("text/jsx", "jsx");
 
+  LanguageManager.getLanguage("javascript").removeFileExtension('jsx');
+  LanguageManager.defineLanguage("jsx", {
+    "name": "JSX",
+    "mode": "jsx",
+    "fileExtensions": ["jsx", "react.js"],
+    "blockComment": ["/*", "*/"]
+  });
 });
